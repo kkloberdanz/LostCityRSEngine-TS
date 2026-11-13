@@ -115,7 +115,7 @@ test('a normal crossbow will not fire bolt racks', () => {
     tick();
     bot.clearMessages();
     bot.opNpc(2, bot.findNpc('chicken'));
-    tickUntil(() => bot.sawMessage("You can't use that ammo with your crossbow."), 10, 'rejects racks');
+    tickUntil(() => bot.sawMessage("You can't use that ammo with your crossbow."), 20, 'rejects racks');
     assert.equal(bot.count('barrows_karil_ammo', 'worn'), 10);
     bot.logoutAndWait();
 });

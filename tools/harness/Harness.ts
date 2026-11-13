@@ -56,6 +56,8 @@ import OpLoc from '#/network/game/client/model/OpLoc.js';
 import OpLocU from '#/network/game/client/model/OpLocU.js';
 import OpNpc from '#/network/game/client/model/OpNpc.js';
 import OpNpcU from '#/network/game/client/model/OpNpcU.js';
+import OpNpcT from '#/network/game/client/model/OpNpcT.js';
+import OpPlayer from '#/network/game/client/model/OpPlayer.js';
 import OpObj from '#/network/game/client/model/OpObj.js';
 import IfButton from '#/network/game/client/model/IfButton.js';
 import InvButton from '#/network/game/client/model/InvButton.js';
@@ -354,11 +356,14 @@ export class Bot {
 
     /** Test-only: top hitpoints up to full before every tick, so long fights can't kill the bot. */
     immortal = false;
+    /** Test-only: pin current hitpoints to this value before every tick (e.g. low HP for Dharok's effect). */
+    holdHp: number | null = null;
 
     keepAlive(): void {
         if (this.player.isActive) {
             this.player.lastResponse = World.currentTick;
             if (this.immortal) this.player.levels[PlayerStat.HITPOINTS] = this.player.baseLevels[PlayerStat.HITPOINTS];
+            if (this.holdHp !== null) this.player.levels[PlayerStat.HITPOINTS] = this.holdHp;
         }
     }
 
@@ -585,6 +590,23 @@ export class Bot {
         this.send(ClientGameProt.OPNPCU, new OpNpcU(npc.nid, it.id, it.slot, comId('inventory:inv')));
     }
 
+    /** Cast a spell (component, e.g. 'magic:wind_strike') on an npc. */
+    spellOnNpc(spell: number | string, npc: Npc): void {
+        const path = findPathToEntity(this.level, this.x, this.z, npc.x, npc.z, 1, npc.width, npc.length);
+        const pkt = this.pathPacket(path, true);
+        if (pkt) this.send(ClientGameProt.MOVE_OPCLICK, pkt);
+        this.send(ClientGameProt.OPNPCT, new OpNpcT(npc.nid, toId(spell, comId)));
+    }
+
+    /** Player option on another bot (op2 = Attack in the wilderness). */
+    opPlayer(op: number, other: Bot): void {
+        const t = other.player;
+        const path = findPathToEntity(this.level, this.x, this.z, t.x, t.z, 1, 1, 1);
+        const pkt = this.pathPacket(path, true);
+        if (pkt) this.send(ClientGameProt.MOVE_OPCLICK, pkt);
+        this.send(ClientGameProt[`OPPLAYER${op}` as 'OPPLAYER1'], new OpPlayer(op, t.slot));
+    }
+
     opObj(op: number, obj: Obj): void {
         const path = this.x === obj.x && this.z === obj.z ? [] : findPath(this.level, this.x, this.z, obj.x, obj.z);
         const pkt = this.pathPacket(path, true);
@@ -636,6 +658,13 @@ export class Bot {
             `kill ${NpcType.get(npc.type).debugname}`
         );
         return World.currentTick - start;
+    }
+
+    /** The npc currently fighting this player in single-way combat (%aggressive_npc within the last 8 ticks), if any. */
+    attacker(): Npc | null {
+        if (this.varp('lastcombat') + 8 <= World.currentTick) return null;
+        const npc = World.getNpcByUid(this.varp('aggressive_npc'));
+        return npc && npc.isActive && npcHp(npc) > 0 ? npc : null;
     }
 
     /** Make the player strong enough for quick test fights. */

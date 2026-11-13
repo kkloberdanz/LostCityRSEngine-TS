@@ -2,7 +2,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { boot, shutdown, tick, tickUntil, events, Bot, npcsNear, locsNear, npcHp, comId, objId, NpcStat, PlayerStat, Npc } from '../Harness.js';
+import { boot, shutdown, tick, tickUntil, events, Bot, npcsNear, locsNear, npcHp, comId, objId, NpcStat, PlayerStat, Npc, NpcType } from '../Harness.js';
 
 const BROTHERS = ['ahrim', 'dharok', 'guthan', 'karil', 'torag', 'verac'] as const;
 // OSRS map coordinates (checked walkable in this map)
@@ -140,6 +140,9 @@ test('ahrim (magic) and karil (ranged) fight from range', () => {
         search(bot, `barrow_${b}_sarcophagus`);
         tickUntil(() => brotherFor(bot, b).length === 1, 10, `${b} appears`);
         const bro = brotherFor(bot, b)[0];
+        // step back onto the open floor: where you stand to search Ahrim's sarcophagus (its NE corner) is a
+        // safespot from his approach (the engine stops him diagonally behind the corner, as in the real game)
+        bot.walkTo(...CRYPT[b]);
         // an attack animation (a splashed spell does no damage, so don't count hits)
         const attackAnim = b === 'karil' ? 'barrows_repeating_crossbow_fire' : 'firewave_casting';
         tickUntil(() => events.some(e => e.who === 'npc' && e.id === bro.nid && e.label === attackAnim), 30, `${b} attacks`);
@@ -196,11 +199,23 @@ test('crypt monsters fight back and count towards the kill count', () => {
     const bot = newBot([3537, 9695, 0]);
     bot.setVarp('barrows_tunnel', 1);
     const kc0 = bot.varbit('barrows_killed_count');
-    const rat = bot.findNpc('barrows_rat', 10);
-    assert.equal(npcHp(rat), 35);
-    bot.fight(rat);
+    const LEVELS: Record<string, number> = { barrows_rat: 43, barrows_giantrat: 76, barrows_spider: 56, barrows_giantspider: 79, barrows_bloodworm: 52, barrows_skeleton_armed: 77, barrows_skeleton_unarmed: 77 };
+    assert.equal(npcHp(bot.findNpc('barrows_rat', 10)), 35);
+    // single-way combat: kill whichever monster is fighting us (or the nearest rat)
+    let victim = bot.findNpc('barrows_rat', 10);
+    tickUntil(
+        () => {
+            if (!victim.isActive || npcHp(victim) === 0) return bot.varbit('barrows_killed_count') > kc0;
+            const a = bot.attacker();
+            if (a && a !== victim) victim = a;
+            if (bot.player.target !== victim && bot.player.activeScript === null) bot.opNpc(2, victim);
+            return false;
+        },
+        300,
+        'kill a crypt monster'
+    );
     tickUntil(() => bot.varbit('barrows_killed_count') === kc0 + 1, 5, 'kill count +1');
-    assert.equal(bot.varbit('barrows_killed_monster'), 43, 'crypt rat adds 43 reward potential');
+    assert.equal(bot.varbit('barrows_killed_monster'), LEVELS[NpcType.get(victim.type).debugname!], 'combat level added to reward potential');
     done(bot);
 });
 
