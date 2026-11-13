@@ -2,7 +2,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { boot, shutdown, tick, tickUntil, Bot, npcsNear, locsNear, npcHp, comId, objId, NpcStat, PlayerStat, Npc } from '../Harness.js';
+import { boot, shutdown, tick, tickUntil, events, Bot, npcsNear, locsNear, npcHp, comId, objId, NpcStat, PlayerStat, Npc } from '../Harness.js';
 
 const BROTHERS = ['ahrim', 'dharok', 'guthan', 'karil', 'torag', 'verac'] as const;
 // OSRS map coordinates (checked walkable in this map)
@@ -139,9 +139,11 @@ test('ahrim (magic) and karil (ranged) fight from range', () => {
         bot.setVarp('barrows_tunnel', 6);
         search(bot, `barrow_${b}_sarcophagus`);
         tickUntil(() => brotherFor(bot, b).length === 1, 10, `${b} appears`);
-        const dmgBefore = bot.myEvents('damage').length;
-        tickUntil(() => bot.myEvents('damage').length > dmgBefore, 30, `${b} attacks`);
         const bro = brotherFor(bot, b)[0];
+        // an attack animation (a splashed spell does no damage, so don't count hits)
+        const attackAnim = b === 'karil' ? 'barrows_repeating_crossbow_fire' : 'firewave_casting';
+        tickUntil(() => events.some(e => e.who === 'npc' && e.id === bro.nid && e.label === attackAnim), 30, `${b} attacks`);
+        assert.ok(Math.max(Math.abs(bro.x - bot.x), Math.abs(bro.z - bot.z)) >= 1);
         weaken(bro);
         bot.fight(bro);
         tickUntil(() => bot.varbit(`barrows_killed_${b}`) === 1, 5, `${b} kill recorded`);
