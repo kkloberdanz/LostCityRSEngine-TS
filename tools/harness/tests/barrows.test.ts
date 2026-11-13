@@ -2,6 +2,8 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
+import IfSetHide from '#/network/game/server/model/IfSetHide.js';
+import IfSetObject from '#/network/game/server/model/IfSetObject.js';
 import { boot, shutdown, tick, tickUntil, events, Bot, npcsNear, locsNear, npcHp, comId, objId, NpcStat, PlayerStat, Npc, NpcType } from '../Harness.js';
 
 const BROTHERS = ['ahrim', 'dharok', 'guthan', 'karil', 'torag', 'verac'] as const;
@@ -68,6 +70,12 @@ test('digging on each mound lands in its crypt, and the stairs lead back up', ()
         assert.deepEqual(bot.coord, [...CRYPT[b], 3], `${b} crypt`);
         assert.ok(bot.sawMessage("You've broken into a crypt!"), 'crypt message');
         assert.equal(bot.overlay, comId('inter_98'), 'kill count overlay open');
+        // com_1..6 hold the brothers' faces: they must stay hidden, or a face model covers the whole viewport
+        for (let c = 1; c <= 6; c++) {
+            const com = comId(`inter_98:com_${c}`);
+            assert.ok(bot.sent.some(m => m instanceof IfSetHide && m.component === com && m.hidden), `${b} face ${c} hidden`);
+            assert.ok(!bot.sent.some(m => m instanceof IfSetObject && m.component === com), `${b} no model on face ${c}`);
+        }
 
         const stairs = bot.findLoc(`barrows_stairs_${b}`, 5);
         bot.opLoc(1, stairs);
