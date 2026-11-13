@@ -1356,8 +1356,19 @@ export default class Player extends PathingEntity {
         const stream = Packet.alloc(0);
 
         stream.p1(this.gender);
-        stream.p1(0xff); // prayer icon?
-        stream.p1(0xff); // skull icon?
+        // 377 sends two icon indexes (-1 = none): the pk icon (headicons_pk), then the prayer icon (headicons_prayer).
+        // Content keeps headicons as a bitmask (content/scripts/player/configs/headicon.constant):
+        // 0 skull, 3 protect from melee, 4 protect from missiles, 5 protect from magic.
+        stream.p1((this.headicons & (1 << 0)) !== 0 ? 0 : 0xff);
+        if ((this.headicons & (1 << 3)) !== 0) {
+            stream.p1(0);
+        } else if ((this.headicons & (1 << 4)) !== 0) {
+            stream.p1(1);
+        } else if ((this.headicons & (1 << 5)) !== 0) {
+            stream.p1(2);
+        } else {
+            stream.p1(0xff);
+        }
 
         const skippedSlots = [];
 
