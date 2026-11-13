@@ -342,14 +342,23 @@ export class Bot {
         }
         const bot = new Bot(player, socket);
         Bot.all.add(bot);
+        // A logout's save is confirmed by the login worker via an async message, which never arrives while
+        // the harness ticks synchronously. The harness has the save bytes already, so drop the pending flush.
+        World.logoutRequests.delete(player.username);
         World.newPlayers.add(player);
         tickUntil(() => player.slot !== -1 && player.isActive, 5, `${username} login`);
         tick(); // first full tick in world (login scripts, initial info)
         return bot;
     }
 
+    /** Test-only: top hitpoints up to full before every tick, so long fights can't kill the bot. */
+    immortal = false;
+
     keepAlive(): void {
-        if (this.player.isActive) this.player.lastResponse = World.currentTick;
+        if (this.player.isActive) {
+            this.player.lastResponse = World.currentTick;
+            if (this.immortal) this.player.levels[PlayerStat.HITPOINTS] = this.player.baseLevels[PlayerStat.HITPOINTS];
+        }
     }
 
     send(prot: ClientGameProt, msg: ClientGameMessage): void {
@@ -422,6 +431,9 @@ export class Bot {
     }
     get modalSide() {
         return this.player.modalSide;
+    }
+    get overlay() {
+        return this.player.overlay;
     }
 
     lastMessages(n: number = 10) {
@@ -609,12 +621,35 @@ export class Bot {
         this.ifButton(`${name}:com_${n}`);
     }
 
+    /** Attack an npc (op2) and keep re-clicking until it dies. Returns ticks taken. */
+    fight(npc: Npc, maxTicks: number = 300): number {
+        const start = World.currentTick;
+        this.opNpc(2, npc);
+        tickUntil(
+            () => {
+                if (!npc.isActive || npcHp(npc) === 0) return true;
+                if (this.player.target === null && !this.player.delayed && this.player.activeScript === null) this.opNpc(2, npc);
+                return false;
+            },
+            maxTicks,
+            `kill ${NpcType.get(npc.type).debugname}`
+        );
+        return World.currentTick - start;
+    }
+
+    /** Make the player strong enough for quick test fights. */
+    makeStrong(): void {
+        for (const s of [PlayerStat.ATTACK, PlayerStat.STRENGTH, PlayerStat.DEFENCE, PlayerStat.HITPOINTS, PlayerStat.PRAYER, PlayerStat.RANGED, PlayerStat.MAGIC]) {
+            this.setLevel(s, 99);
+        }
+    }
+
     logout(): void {
         this.player.requestLogout = true;
     }
 
     /** Request logout and tick until removed from the world. Returns the saved bytes. */
-    logoutAndWait(max: number = 30): Uint8Array {
+    logoutAndWait(max: number = 60): Uint8Array {
         // the logout button is re-clicked each tick: a request blocked by the combat timer is dropped
         tickUntil(
             () => {
