@@ -213,6 +213,7 @@ export function npcsNear(x: number, z: number, level: number, radius: number = 1
     const out: Npc[] = [];
     for (const npc of World.npcs) {
         if (!npc.isActive || npc.level !== level) continue;
+        if (npc.levels[NpcStat.HITPOINTS] === 0 && NpcType.get(npc.type).op?.[1]) continue; // dying (death anim playing)
         if (Math.abs(npc.x - x) > radius || Math.abs(npc.z - z) > radius) continue;
         if (t !== undefined && npc.type !== t) continue;
         out.push(npc);
